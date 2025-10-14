@@ -913,15 +913,25 @@ def prepare_data(
 
     # Run voice data preparation
     try:
-        from vidchat.voice_prep.prepare_voice_data import main as prepare_voice_data
-
         console.print("[bold]Starting voice data preparation...[/bold]\n")
-        prepare_voice_data()
 
-        console.print("\n[green]✓ Voice data preparation completed![/green]")
-        console.print(f"\n[dim]Data saved to: .data/voice_data/{voice_name}/[/dim]")
-        console.print(f"[dim]Next step: vidchat-cli train-model[/dim]\n")
+        # Run as a subprocess to use the proper CLI interface
+        result = subprocess.run(
+            ["uv", "run", "python", "-m", "vidchat.voice_prep.prepare_voice_data"],
+            cwd=PROJECT_ROOT,
+        )
 
+        if result.returncode == 0:
+            console.print("\n[green]✓ Voice data preparation completed![/green]")
+            console.print(f"\n[dim]Data saved to: .data/voice_data/{voice_name}/[/dim]")
+            console.print(f"[dim]Next step: vidchat-cli train-model[/dim]\n")
+        else:
+            console.print(f"\n[red]✗ Voice data preparation failed[/red]")
+            raise typer.Exit(1)
+
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Preparation interrupted by user[/yellow]")
+        raise typer.Exit(0)
     except Exception as e:
         console.print(f"\n[red]✗ Error during preparation: {e}[/red]")
         raise typer.Exit(1)

@@ -235,8 +235,18 @@ def prepare(
 
     # Determine output directory
     if output_dir is None:
-        # Use ~/RVC/datasets/<voice_name> for compatibility
-        output_dir = Path.home() / "RVC" / "datasets" / voice_name
+        # Find project root by looking for pyproject.toml
+        current = Path.cwd()
+        while current != current.parent:
+            if (current / "pyproject.toml").exists():
+                project_root = current
+                break
+            current = current.parent
+        else:
+            project_root = Path.cwd()
+
+        # Use .data/voice_data/<voice_name> in the repository
+        output_dir = project_root / ".data" / "voice_data" / voice_name
     else:
         output_dir = Path(output_dir)
 
