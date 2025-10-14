@@ -10,6 +10,8 @@ Usage:
     vidchat-cli stop all            # Stop all services
     vidchat-cli install             # Install all dependencies
     vidchat-cli models              # Download required models
+    vidchat-cli prepare-data        # Prepare voice training data from YouTube
+    vidchat-cli train-model         # Train RVC voice model
 """
 
 import os
@@ -863,6 +865,170 @@ def mlflow_ui(
             subprocess.run(cmd)
         except KeyboardInterrupt:
             console.print("\n\n[yellow]MLflow UI stopped[/yellow]")
+
+
+@app.command()
+def prepare_data(
+    voice_name: Optional[str] = typer.Option(None, help="Voice name (from config.yaml)"),
+    config_file: str = typer.Option("config.yaml", help="Path to config file"),
+):
+    """
+    Prepare voice training data from YouTube URLs.
+
+    Downloads audio from YouTube URLs in config.yaml, extracts speech,
+    transcribes with Whisper, and prepares training-ready audio segments.
+    """
+    console.print("\n[bold cyan]VidChat - Voice Data Preparation[/bold cyan]\n")
+
+    # Load config
+    config_path = PROJECT_ROOT / config_file
+    if not config_path.exists():
+        console.print(f"[red]✗ Config file not found: {config_path}[/red]")
+        console.print(f"[dim]Create one from: cp config.example.yaml config.yaml[/dim]")
+        raise typer.Exit(1)
+
+    import yaml
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    # Get voice name
+    if not voice_name:
+        voice_name = config.get('voice_training', {}).get('voice_name')
+
+    if not voice_name:
+        console.print("[red]✗ No voice name specified[/red]")
+        console.print("[dim]Add voice_name to config.yaml or use --voice-name option[/dim]")
+        raise typer.Exit(1)
+
+    # Get training URLs
+    training_urls = config.get('voice_training', {}).get('training_urls', [])
+    if not training_urls:
+        console.print(f"[red]✗ No training URLs found in {config_file}[/red]")
+        console.print("[dim]Add YouTube URLs to voice_training.training_urls in config.yaml[/dim]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]✓[/green] Voice name: [cyan]{voice_name}[/cyan]")
+    console.print(f"[green]✓[/green] Found {len(training_urls)} training URLs")
+    console.print()
+
+    # Run voice data preparation
+    try:
+        from vidchat.voice_prep.prepare_voice_data import main as prepare_voice_data
+
+        console.print("[bold]Starting voice data preparation...[/bold]\n")
+        prepare_voice_data()
+
+        console.print("\n[green]✓ Voice data preparation completed![/green]")
+        console.print(f"\n[dim]Data saved to: .data/voice_data/{voice_name}/[/dim]")
+        console.print(f"[dim]Next step: vidchat-cli train-model[/dim]\n")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Error during preparation: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def train_model(
+    voice_name: Optional[str] = typer.Option(None, help="Voice name (from config.yaml)"),
+    epochs: Optional[int] = typer.Option(None, help="Number of training epochs"),
+    batch_size: Optional[int] = typer.Option(None, help="Batch size for training"),
+    config_file: str = typer.Option("config.yaml", help="Path to config file"),
+    use_gpu: bool = typer.Option(False, help="Use GPU for training (if available)"),
+    background: bool = typer.Option(False, help="Run training in background"),
+):
+    """
+    Train RVC voice model from prepared data.
+
+    Trains a voice conversion model using the prepared audio data.
+    Training can take several hours depending on data size and hardware.
+    """
+    console.print("\n[bold cyan]VidChat - RVC Model Training[/bold cyan]\n")
+
+    # Load config
+    config_path = PROJECT_ROOT / config_file
+    if not config_path.exists():
+        console.print(f"[red]✗ Config file not found: {config_path}[/red]")
+        raise typer.Exit(1)
+
+    import yaml
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    # Get voice name
+    if not voice_name:
+        voice_name = config.get('voice_training', {}).get('voice_name')
+
+    if not voice_name:
+        console.print("[red]✗ No voice name specified[/red]")
+        raise typer.Exit(1)
+
+    # Get training parameters from config if not provided
+    if epochs is None:
+        epochs = config.get('voice_training', {}).get('epochs', 300)
+    if batch_size is None:
+        batch_size = config.get('voice_training', {}).get('batch_size', 4)
+
+    console.print(f"[green]✓[/green] Voice name: [cyan]{voice_name}[/cyan]")
+    console.print(f"[green]✓[/green] Epochs: {epochs}")
+    console.print(f"[green]✓[/green] Batch size: {batch_size}")
+    console.print(f"[green]✓[/green] GPU: {'enabled' if use_gpu else 'CPU only'}")
+    console.print()
+
+    # Check if training data exists
+    data_dir = PROJECT_ROOT / ".data" / "voice_data" / voice_name
+    if not data_dir.exists():
+        console.print(f"[red]✗ No training data found for '{voice_name}'[/red]")
+        console.print(f"[dim]Run: vidchat-cli prepare-data[/dim]\n")
+        raise typer.Exit(1)
+
+    # Build training command
+    cmd = [
+        "uv", "run", "python",
+        str(PROJECT_ROOT / "src" / "vidchat" / "training" / "rvc_train_with_tracking.py"),
+        voice_name,
+        "--epochs", str(epochs),
+        "--batch-size", str(batch_size),
+    ]
+
+    if use_gpu:
+        cmd.append("--gpu")
+
+    try:
+        console.print("[bold]Starting RVC model training...[/bold]")
+        console.print(f"[dim]This may take several hours...[/dim]\n")
+
+        if background:
+            console.print("[yellow]⚙ Running in background[/yellow]")
+            console.print(f"[dim]Monitor logs: tail -f .data/logs/training_{voice_name}.log[/dim]\n")
+
+            log_file = PROJECT_ROOT / ".data" / "logs" / f"training_{voice_name}.log"
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(log_file, "w") as f:
+                subprocess.Popen(
+                    cmd,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    cwd=PROJECT_ROOT,
+                )
+            console.print("[green]✓ Training started in background[/green]\n")
+        else:
+            result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+            if result.returncode == 0:
+                console.print("\n[green]✓ Model training completed![/green]")
+                console.print(f"\n[dim]Model saved to: external/RVC/logs/{voice_name}/[/dim]")
+                console.print(f"[dim]View metrics: vidchat-cli mlflow[/dim]\n")
+            else:
+                console.print("\n[red]✗ Training failed[/red]")
+                raise typer.Exit(1)
+
+    except KeyboardInterrupt:
+        console.print("\n\n[yellow]Training interrupted by user[/yellow]")
+        raise typer.Exit(0)
+    except Exception as e:
+        console.print(f"\n[red]✗ Error during training: {e}[/red]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
