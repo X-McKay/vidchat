@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv/
+venv/
+ENV/
+env/
+scratch/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Data directories (keep structure, ignore content)
+.data/*
+!.data/.gitkeep
+data/training/*
+data/voice_data/*
+data/downloads/*
+data/logs/*
+!data/**/.gitkeep
+
+# MLflow experiment tracking
+.data/mlruns/
+mlruns/
+
+# Models (downloaded at runtime)
+models/*.onnx
+models/*.pth
+models/*.pt
+models/*.safetensors
+models/*.bin
+models/*.ckpt
+!models/.gitkeep
+!models/*.json
+checkpoints/
+*.pth.tar
+
+# External dependencies (cloned at setup)
+external/*
+!external/.gitkeep
+!external/README.md
+
+# Output files
+output/*
+!output/.gitkeep
+*.wav
+*.mp4
+*.avi
+*.png
+!assets/**/*.png
+
+# Logs
+*.log
+logs/
+.data/logs/*
+training_logs/
+*.log.*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+scratch/*
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Claude Code
+.claude/settings.local.json
+
+# User configuration (may contain personal URLs)
+config.yaml

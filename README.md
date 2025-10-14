@@ -1,238 +1,349 @@
-# VidChat - AI Chat Agent with Avatar and Audio
+# VidChat - AI Chat Agent with Voice Cloning (Web-Only)
 
-An interactive AI chat agent that responds with both visual avatar animations and spoken audio responses, similar to a Zoom-style video chat experience.
+An interactive AI chat agent with XTTS v2 zero-shot voice cloning and web interface.
 
-## Features
+## 🎯 Getting Started
 
-- **AI-Powered Conversations**: Uses Ollama and PydanticAI for intelligent responses
-- **Visual Avatar**: Animated avatar that shows thinking and speaking states
-- **Text-to-Speech**: Audio responses using pyttsx3
-- **Real-time Display**: OpenCV-based video window showing the avatar
-- **Simple Interface**: Command-line chat interface
+**New to VidChat?** Start here:
+- **[QUICKSTART.md](QUICKSTART.md)** - Get running in 5 minutes
+- **[END_TO_END_GUIDE.md](END_TO_END_GUIDE.md)** - Comprehensive usage guide
+- **[test_end_to_end.py](test_end_to_end.py)** - Automated test suite
 
-## Prerequisites
+**Version 0.3.0** - Web-only (OpenCV desktop UI removed for simplicity)
 
-Before running VidChat, make sure you have:
+## 🚀 Quick Start
 
-1. **Python 3.13+** installed
-2. **UV package manager** installed (for dependency management)
-3. **Ollama** installed and running
-
-### Installing Ollama
-
-If you don't have Ollama installed:
-
-**Linux/macOS:**
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+# 1. Install dependencies
+uv sync --extra voice-cloning --extra web
+
+# 2. Start Ollama (if not running)
+ollama serve &
+
+# 3. Run test suite
+uv run python test_end_to_end.py
+
+# 4. Start web server (in another terminal)
+uv run uvicorn vidchat.web.server:app --host 127.0.0.1 --port 8000
+
+# 5. Test the web interface
+uv run python test_webapp.py
 ```
 
-**Windows:**
-Download from [https://ollama.com/download](https://ollama.com/download)
+**That's it!** See [QUICKSTART.md](QUICKSTART.md) for more options.
 
-### Pull the required model
+## ✨ Features
 
-After installing Ollama, pull the llama3.2 model:
+### Core Features (v0.3.0)
+- **🎙️ Zero-Shot Voice Cloning**: XTTS v2 clones any voice with just 6 seconds of audio
+- **🤖 AI-Powered Chat**: Ollama LLM (llama3.2) via PydanticAI for intelligent responses
+- **🌐 Web Interface**: FastAPI backend with WebSocket support for real-time audio streaming
+- **🎵 High-Quality Audio**: 24kHz voice synthesis with cloned voice
+- **🌐 17 Languages**: Multilingual support for voice synthesis
+- **⚡ Fast**: ~1-2 seconds per sentence generation
 
+### Technical Features
+- **📦 Modular Design**: Clean separation of concerns (AI, TTS, Web)
+- **🔧 Easy Configuration**: Simple AppConfig for customization
+- **🧪 Fully Tested**: Comprehensive test suite validates all components
+- **🐍 Modern Python**: Uses PydanticAI, FastAPI, and latest Python features
+- **🌍 Cross-Platform**: Works on Linux, macOS, and Windows
+- **🔒 Privacy-First**: All processing runs locally, no external API calls
+
+## 📋 Prerequisites
+
+### Required
+- **Python 3.13+**
+- **UV package manager** - [Install UV](https://github.com/astral-sh/uv)
+- **Ollama** - Local LLM server
+
+### Optional
+- **Node.js 22+** - For web interface development
+- **mise** - Automatic runtime version management
+
+### Installing Prerequisites
+
+**UV (Package Manager):**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Ollama (LLM Server):**
+```bash
+# Linux/macOS
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows
+# Download from https://ollama.com/download
+```
+
+**Pull LLM Model:**
 ```bash
 ollama pull llama3.2
 ```
 
-Make sure Ollama is running (it usually starts automatically, or run `ollama serve`).
+## 🛠️ Installation
 
-## Installation
+### Option 1: Automated Setup (Recommended)
 
-1. Clone or navigate to the project directory:
-```bash
-cd vidchat
-```
-
-2. Install dependencies using UV:
-```bash
-uv sync
-```
-
-This will install all required packages:
-- pydantic-ai (for AI agent framework)
-- ollama (for LLM integration)
-- pyttsx3 (for text-to-speech)
-- opencv-python (for video display)
-- pillow (for image processing)
-
-## Usage
-
-### Running the Application
-
-Start the interactive chat agent:
+Run the setup script which handles everything:
 
 ```bash
-uv run python main.py
+bash scripts/setup.sh
 ```
 
-Or run the example demo script that asks a few predefined questions:
+The script will:
+1. Check prerequisites
+2. Create directory structure
+3. Install Python dependencies
+4. Download Piper TTS models
+5. Check Ollama installation
+6. Optionally setup SadTalker
+7. Optionally build web interface
+
+### Option 2: Manual Setup
 
 ```bash
-uv run python example.py
+# 1. Install Python dependencies
+uv sync --all-extras
+
+# 2. Download Piper TTS model
+mkdir -p models
+cd models
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+cd ..
+
+# 3. Create configuration
+cp config.example.yaml config.yaml
+
+# 4. Install Ollama and pull model
+ollama pull llama3.2
 ```
 
-To test the AI functionality without display/audio (headless mode):
+## 🎯 Usage
+
+### Web Interface
 
 ```bash
-uv run python test_headless.py
+# Start all services in background
+uv run vidchat-cli start all --background
+
+# Open browser to http://localhost:8000
 ```
 
-### Using the Chat Interface
+### Terminal Chat
 
-1. The application will initialize and open a video window with the avatar
-2. Type your message in the terminal
-3. Press Enter to send
-4. Watch the avatar and listen to the audio response
-5. Type `quit`, `exit`, or `bye` to end the chat
-
-### Example Session
-
-```
-============================================================
-VidChat - AI Chat Agent with Avatar and Audio
-============================================================
-
-Initializing agent...
-Note: Make sure Ollama is running with llama3.2 model installed
-      Run: ollama pull llama3.2
-
-Type 'quit' or 'exit' to end the chat
-
-You: Hello! How are you?
-
-[You]: Hello! How are you?
-
-[AI Speaking]: Hello! I'm doing well, thank you for asking! I'm here and ready to help you with anything you need. How can I assist you today?
-
-You: What's the weather like?
-
-[You]: What's the weather like?
-
-[AI Speaking]: I don't have access to real-time weather data, but I'd be happy to help you check the weather if you tell me your location!
-
-You: quit
-
-Goodbye!
-```
-
-## How It Works
-
-### Architecture
-
-The application consists of a single main component, the `VidChatAgent` class, which handles:
-
-1. **AI Agent**: Uses PydanticAI with Ollama's llama3.2 model for generating responses
-2. **Avatar Rendering**: Creates simple animated avatar frames using OpenCV
-3. **Text-to-Speech**: Converts AI responses to speech using pyttsx3
-4. **State Management**: Manages thinking, speaking, and idle states
-
-### Avatar States
-
-- **Thinking**: Avatar appears with "Thinking..." text while the AI processes your input
-- **Speaking**: Avatar changes color and shows an open mouth while speaking
-- **Idle**: Avatar returns to neutral state after speaking
-
-### Files
-
-- `main.py`: Main application with the VidChatAgent class and interactive chat loop
-- `example.py`: Simple demo script with predefined questions (requires display)
-- `test_headless.py`: Headless test script to verify AI functionality without display/audio
-- `pyproject.toml`: Project configuration and dependencies
-- `README.md`: This file
-- `PROJECT.md`: Project requirements and specifications
-
-## Customization
-
-You can customize various aspects of the application by modifying `main.py`:
-
-### Change the AI Model
-
-In the `VidChatAgent.__init__()` method, change the model name:
-
-```python
-agent = VidChatAgent(model_name="llama3.1")  # or any other Ollama model
-```
-
-### Adjust Speech Rate
-
-In the `VidChatAgent.__init__()` method:
-
-```python
-self.tts_engine.setProperty('rate', 180)  # Faster speech
-```
-
-### Modify System Prompt
-
-In the `VidChatAgent.__init__()` method:
-
-```python
-self.agent = Agent(
-    model=self.model,
-    system_prompt="Your custom system prompt here"
-)
-```
-
-### Change Avatar Colors
-
-In the `create_avatar_frame()` method, modify the color tuples:
-
-```python
-color = (R, G, B)  # RGB values 0-255
-```
-
-## Troubleshooting
-
-### "Error initializing agent"
-
-**Solution**: Make sure Ollama is running and the model is pulled
 ```bash
-ollama serve  # Start Ollama if not running
-ollama pull llama3.2  # Pull the model
+uv run vidchat
 ```
 
-### "No module named 'pydantic_ai'"
+### CLI Commands
 
-**Solution**: Install dependencies
 ```bash
-uv sync
+# Check status
+uv run vidchat-cli status
+
+# Start services
+uv run vidchat-cli start web
+uv run vidchat-cli start ollama
+uv run vidchat-cli start all --background
+
+# Stop services
+uv run vidchat-cli stop all
+
+# Build frontend
+uv run vidchat-cli build
 ```
 
-### Text-to-Speech not working (Linux)
+## ⚙️ Configuration
 
-**Solution**: Install espeak
+VidChat uses a YAML configuration file for all settings.
+
+1. **Copy the example config:**
+   ```bash
+   cp config.example.yaml config.yaml
+   ```
+
+2. **Edit config.yaml:**
+   ```yaml
+   # Voice Training
+   voice_training:
+     voice_name: "my_voice"
+     training_urls:
+       - "https://www.youtube.com/watch?v=YOUR_VIDEO"
+     epochs: 300
+     batch_size: 4
+
+   # Application Settings
+   app:
+     window_name: "VidChat"
+     fps: 30
+     width: 800
+     height: 600
+
+   # Avatar Settings
+   avatar:
+     type: "image"  # "geometric", "image", or "sadtalker"
+     image_path: "assets/avatars/default_avatar.png"
+   ```
+
+3. **All paths are relative to project root** - works on any OS!
+
+### Voice Training
+
+To train a custom voice model:
+
+1. Add YouTube URLs to `config.yaml`:
+   ```yaml
+   voice_training:
+     voice_name: "my_voice"
+     training_urls:
+       - "https://www.youtube.com/watch?v=VIDEO1"
+       - "https://www.youtube.com/watch?v=VIDEO2"
+   ```
+
+2. Run voice training:
+   ```bash
+   uv run vidchat-cli train-voice
+   ```
+
+## 📁 Project Structure
+
+```
+vidchat/
+├── config.yaml              # Your configuration (gitignored)
+├── config.example.yaml      # Configuration template
+├── pyproject.toml          # Dependencies and build config
+├── README.md               # This file
+│
+├── scripts/                # Setup and utility scripts
+│   └── setup.sh           # Automated setup script
+│
+├── docs/                   # Documentation
+│   ├── QUICKSTART.md
+│   ├── CLI_GUIDE.md
+│   ├── AVATAR_GUIDE.md
+│   └── ...
+│
+├── src/vidchat/           # Main package
+│   ├── core/             # Core agent
+│   ├── tts/              # Text-to-speech engines
+│   ├── avatar/           # Avatar renderers
+│   ├── audio/            # Audio processing
+│   ├── web/              # Web interface
+│   ├── data/             # Voice data preparation
+│   ├── training/         # Model training
+│   ├── config/           # Configuration
+│   └── utils/            # Utilities
+│
+├── assets/               # Asset files
+│   └── avatars/         # Avatar images
+│
+├── models/              # TTS models (downloaded)
+├── .data/               # Data directory (gitignored)
+│   ├── training/       # Training data
+│   ├── voice_data/     # Voice datasets
+│   ├── downloads/      # Downloaded files
+│   ├── logs/           # Log files
+│   └── models/         # Training checkpoints
+│
+├── output/              # Output files (gitignored)
+└── external/            # External dependencies (gitignored)
+    ├── SadTalker/      # AI avatar renderer
+    └── RVC/            # Voice conversion
+```
+
+## 🔧 Troubleshooting
+
+### "Ollama not running"
+
 ```bash
-# Ubuntu/Debian
-sudo apt-get install espeak
+# Start Ollama
+ollama serve
 
-# Fedora
-sudo dnf install espeak
+# Verify model
+ollama list
 ```
 
-### Avatar window doesn't appear
+### "Config file not found"
 
-**Solution**: Make sure you have display capabilities. On remote servers, you may need X11 forwarding or a virtual display.
+```bash
+# Create config from example
+cp config.example.yaml config.yaml
+```
 
-## Future Enhancements
+### "Piper TTS model missing"
 
-Potential improvements for future versions:
+```bash
+# Download model
+bash scripts/setup.sh
+```
 
-- More sophisticated avatar animations
-- Multiple avatar styles/characters
-- Voice input (speech-to-text)
-- Better lip-syncing with audio
-- Recording conversation history
-- Web-based interface
-- Multiple AI model support
-- Customizable avatar images/videos
+### "Permission denied: scripts/setup.sh"
 
-## License
+```bash
+# Make executable
+chmod +x scripts/setup.sh
+```
+
+## 📚 Documentation
+
+Comprehensive guides are available in the `docs/` directory:
+
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - 5-minute setup guide
+- **[docs/CLI_GUIDE.md](docs/CLI_GUIDE.md)** - Complete CLI documentation
+- **[docs/CLI_COMMANDS.md](docs/CLI_COMMANDS.md)** - Quick command reference
+- **[docs/WEB_INTERFACE_README.md](docs/WEB_INTERFACE_README.md)** - Web interface guide
+- **[docs/AVATAR_GUIDE.md](docs/AVATAR_GUIDE.md)** - Avatar customization
+- **[docs/XTTS_VOICE_CLONING.md](docs/XTTS_VOICE_CLONING.md)** - Voice cloning with XTTS v2
+- **[docs/VOICE_CLONING_SOLUTIONS.md](docs/VOICE_CLONING_SOLUTIONS.md)** - Comparison of voice cloning options
+- **[docs/VOICE_DATA_PREP_GUIDE.md](docs/VOICE_DATA_PREP_GUIDE.md)** - Voice data preparation
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
+
+## 🔒 Privacy & Security
+
+- **All processing is local** - No data sent to external servers
+- **config.yaml is gitignored** - Your URLs and settings stay private
+- **Models downloaded to local directories** - Full control over data
+- **External dependencies optional** - Only install what you need
+
+## 🤝 Contributing
+
+Contributions are welcome! This project is designed to be:
+
+- **Reproducible** - Anyone can clone and run it
+- **OS-agnostic** - Works on Linux, macOS, Windows
+- **Well-documented** - Clear setup and usage instructions
+- **Modular** - Easy to extend and customize
+
+To contribute:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test on multiple platforms if possible
+5. Submit a pull request
+
+## 📄 License
 
 This project is open source and available for educational and personal use.
 
-## Contributing
+## 🙏 Credits
 
-Feel free to submit issues, feature requests, or pull requests to improve VidChat!
+**Core Technologies:**
+- [Piper TTS](https://github.com/rhasspy/piper) - High-quality text-to-speech
+- [PydanticAI](https://ai.pydantic.dev/) - AI agent framework
+- [Ollama](https://ollama.com/) - Local LLM server
+- [OpenCV](https://opencv.org/) - Computer vision
+- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
+- [React](https://react.dev/) - UI library
+
+**Optional:**
+- [SadTalker](https://github.com/OpenTalker/SadTalker) - AI avatar animations
+- [RVC](https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI) - Voice conversion
+
+---
+
+**Enjoy chatting with your AI assistant!** 🤖✨
+
+For issues or questions, please open an issue on GitHub.

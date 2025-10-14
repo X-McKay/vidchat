@@ -1,0 +1,82 @@
+# VidChat Configuration Example
+# Copy this to config.yaml and customize for your needs
+
+# Voice Training Configuration
+voice_training:
+  # Name for your voice model
+  voice_name: "robg"
+
+  # YouTube URLs for training data
+  # Add your own URLs here - longer videos with clear speech work best
+  # Aim for at least 10-15 minutes of total audio
+  training_urls:
+    - "https://www.youtube.com/watch?v=ST6HJQutdV8"
+    - "https://www.youtube.com/shorts/gjAaGAFbxm8"
+    - "https://www.youtube.com/shorts/z5Jj1v6XL_g"
+    - "https://www.youtube.com/shorts/R-UEyC9i3cc"
+
+  # Training parameters
+  epochs: 300
+  batch_size: 4
+  sample_rate: 40000  # Hz
+
+  # Audio preprocessing
+  segment_length: 10  # seconds
+  min_segment_length: 3  # seconds
+  silence_threshold: -40  # dB
+
+# Paths (relative to project root - OS agnostic)
+paths:
+  # Data directories
+  data_dir: ".data"
+  models_dir: "models"
+  output_dir: "output"
+
+  # External dependencies
+  external_dir: "external"
+  sadtalker_dir: "external/SadTalker"
+  rvc_dir: "external/RVC"
+
+  # Voice training paths (within data_dir)
+  voice_data: "voice_data"
+  training_data: "training"
+  downloads: "downloads"
+  logs: "logs"
+
+# Application Settings
+app:
+  window_name: "VidChat"
+  fps: 30
+  width: 800
+  height: 600
+
+# TTS Settings
+tts:
+  provider: "piper"  # "piper", "xtts", or "hybrid" (piper + rvc)
+  piper_model: "en_US-lessac-medium"
+
+  # XTTS Voice Cloning Settings (when provider="xtts")
+  xtts:
+    # Path to reference audio for voice cloning (6+ seconds required)
+    # Can be a single segment or full audio file
+    reference_audio: "~/RVC/datasets/robg/segment_0000.wav"
+    language: "en"  # en, es, fr, de, it, pt, pl, tr, ru, nl, cs, ar, zh-cn, hu, ko, ja, hi
+
+# AI Settings
+ai:
+  model: "llama3.2"
+  temperature: 0.7
+  max_tokens: 150
+
+# Avatar Settings
+avatar:
+  type: "image"  # "geometric", "image", or "sadtalker"
+  image_path: "assets/avatars/default_avatar.png"
+  enable_blink: true
+  enable_head_movement: true
+
+# Web Interface Settings
+web:
+  host: "127.0.0.1"
+  port: 8000
+  debug: false

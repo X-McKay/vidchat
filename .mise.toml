@@ -1,0 +1,58 @@
+# VidChat Runtime Version Management
+# https://mise.jdx.dev/
+
+[tools]
+python = "3.10"
+node = "22"
+
+[env]
+# Python environment
+_.python.venv = { path = ".venv", create = true }
+
+# Node environment
+NODE_ENV = "development"
+
+[tasks.install]
+description = "Install all dependencies"
+run = [
+    "uv sync --all-extras",
+    "cd src/vidchat/web/frontend && npm install --legacy-peer-deps"
+]
+
+[tasks.build-frontend]
+description = "Build the React frontend"
+run = "cd src/vidchat/web/frontend && npm run build"
+
+[tasks.dev-frontend]
+description = "Start frontend dev server"
+run = "cd src/vidchat/web/frontend && npm run dev"
+
+[tasks.start-web]
+description = "Start the web server"
+run = "uv run python start_web_server.py"
+
+[tasks.start-ollama]
+description = "Start Ollama service"
+run = "ollama serve"
+
+[tasks.models]
+description = "Download required models"
+run = [
+    "ollama pull llama3.2",
+    "mkdir -p models",
+    "cd models && [ -f en_US-lessac-medium.onnx ] || wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+    "cd models && [ -f en_US-lessac-medium.onnx.json ] || wget -q https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
+]
+
+[tasks.test-imports]
+description = "Test that all imports work"
+run = "uv run python -c 'from vidchat import VidChatAgent; print(\"✓ Imports successful\")'"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = [
+    "rm -rf src/vidchat/web/frontend/dist",
+    "rm -rf src/vidchat/web/frontend/node_modules",
+    "find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true",
+    "find . -type f -name '*.pyc' -delete 2>/dev/null || true"
+]
