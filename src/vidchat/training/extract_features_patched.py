@@ -15,7 +15,10 @@ def patched_torch_load(*args, **kwargs):
 torch.load = patched_torch_load
 
 # Now import and run the RVC extraction script
-rvc_dir = Path.home() / "RVC"
+# Find project root and use external/RVC
+current = Path(__file__).resolve()
+project_root = current.parents[3]  # Go up to project root
+rvc_dir = project_root / "external" / "RVC"
 sys.path.insert(0, str(rvc_dir))
 
 # Import the actual extraction script

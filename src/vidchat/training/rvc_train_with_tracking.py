@@ -107,12 +107,9 @@ def train_rvc_with_tracking(
         save_freq: Save checkpoint every N epochs
         gpu: Use GPU if available
     """
-    # Load config
-    try:
-        config = load_config()
-        rvc_dir = config.paths.rvc_dir
-    except:
-        rvc_dir = Path.home() / "RVC"
+    # Use RVC from project's external directory
+    project_root = Path(__file__).resolve().parents[3]
+    rvc_dir = project_root / "external" / "RVC"
 
     exp_dir = rvc_dir / "logs" / experiment_name
     log_file = exp_dir / "train.log"
