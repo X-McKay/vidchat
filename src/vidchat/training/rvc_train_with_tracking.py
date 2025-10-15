@@ -149,7 +149,7 @@ def train_rvc_with_tracking(
     python_cmd = str(Path.home() / ".local/share/mise/installs/python/3.10.19/bin/python3")
 
     # Step 1: Preprocess audio (resample and slice)
-    print("   1/4 Preprocessing audio...")
+    print("   1/5 Preprocessing audio...")
     preprocess_cmd = [
         python_cmd,
         str(rvc_dir / "infer/modules/train/preprocess.py"),
@@ -168,8 +168,25 @@ def train_rvc_with_tracking(
         return
     print(f"   ✓ Preprocessing complete")
 
-    # Step 2: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
-    print("   2/4 Extracting features...")
+    # Step 2: Extract pitch (f0)
+    print("   2/5 Extracting pitch (f0)...")
+    f0_extract_cmd = [
+        python_cmd,
+        str(rvc_dir / "infer/modules/train/extract/extract_f0_print.py"),
+        str(exp_dir),
+        str(os.cpu_count() or 4),  # Number of processes
+        "rmvpe",  # F0 extraction method (rmvpe is most accurate)
+    ]
+
+    result = subprocess.run(f0_extract_cmd, cwd=rvc_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"   ❌ Pitch extraction failed:")
+        print(result.stderr)
+        return
+    print(f"   ✓ Pitch extraction complete")
+
+    # Step 3: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
+    print("   3/5 Extracting features...")
     patched_extract_script = project_root / "src" / "vidchat" / "training" / "extract_features_patched.py"
     extract_cmd = [
         python_cmd,
@@ -192,8 +209,8 @@ def train_rvc_with_tracking(
         return
     print(f"   ✓ Feature extraction complete")
 
-    # Step 3: Create filelist.txt
-    print("   3/4 Creating filelist...")
+    # Step 4: Create filelist.txt
+    print("   4/5 Creating filelist...")
     filelist_path = exp_dir / "filelist.txt"
     wav_16k_dir = exp_dir / "1_16k_wavs"
     feature_dir = exp_dir / "3_feature768"
@@ -207,8 +224,8 @@ def train_rvc_with_tracking(
 
     print(f"   ✓ Created filelist with {len(wav_files)} files")
 
-    # Step 4: Create config.json
-    print("   4/4 Creating training config...")
+    # Step 5: Create config.json
+    print("   5/5 Creating training config...")
     import json
     config_data = {
         "train": {
