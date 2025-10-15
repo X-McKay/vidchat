@@ -117,11 +117,138 @@ def train_rvc_with_tracking(
     exp_dir = rvc_dir / "logs" / experiment_name
     log_file = exp_dir / "train.log"
 
-    # Check if experiment directory exists
-    if not exp_dir.exists():
-        print(f"❌ Experiment directory not found: {exp_dir}")
-        print("Run preprocessing first!")
+    # Check if training data exists in VidChat's data directory
+    project_root = Path(__file__).resolve().parents[3]
+    vidchat_data_dir = project_root / ".data" / "voice_data" / experiment_name
+
+    if not vidchat_data_dir.exists() or not list(vidchat_data_dir.glob("*.wav")):
+        print(f"❌ Training data not found: {vidchat_data_dir}")
+        print("Run: vidchat-cli prepare-data")
         return
+
+    # Create RVC experiment directory structure
+    exp_dir.mkdir(parents=True, exist_ok=True)
+    gt_wavs_dir = exp_dir / "0_gt_wavs"
+    gt_wavs_dir.mkdir(exist_ok=True)
+
+    # Copy prepared audio files to RVC directory
+    print(f"\n📂 Copying audio files to RVC directory...")
+    wav_files = list(vidchat_data_dir.glob("*.wav"))
+    print(f"   Found {len(wav_files)} audio files")
+
+    import shutil
+    for wav_file in wav_files:
+        dest = gt_wavs_dir / wav_file.name
+        if not dest.exists():
+            shutil.copy2(wav_file, dest)
+
+    print(f"   ✓ Copied to: {gt_wavs_dir}")
+
+    # Run RVC preprocessing pipeline
+    print(f"\n🔧 Running RVC preprocessing...")
+    python_cmd = str(Path.home() / ".local/share/mise/installs/python/3.10.19/bin/python3")
+
+    # Step 1: Preprocess audio (resample and slice)
+    print("   1/3 Preprocessing audio...")
+    preprocess_cmd = [
+        python_cmd,
+        str(rvc_dir / "infer/modules/train/preprocess.py"),
+        str(gt_wavs_dir),
+        "40000",  # Sample rate
+        str(os.cpu_count() or 4),  # Number of CPU cores
+        str(exp_dir),
+        "False",  # noparallel
+        "3.7",  # Segment length
+    ]
+
+    result = subprocess.run(preprocess_cmd, cwd=rvc_dir, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"   ❌ Preprocessing failed:")
+        print(result.stderr)
+        return
+    print(f"   ✓ Preprocessing complete")
+
+    # Step 2: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
+    print("   2/3 Extracting features...")
+    patched_extract_script = project_root / "src" / "vidchat" / "training" / "extract_features_patched.py"
+    extract_cmd = [
+        python_cmd,
+        str(patched_extract_script),
+        "cpu",  # Device
+        "1",  # Number of processes
+        "0",  # GPU ID (ignored for CPU)
+        str(exp_dir),
+        "v2",  # Model version
+        "False",  # Use diff
+    ]
+
+    env = os.environ.copy()
+    env["CUDA_VISIBLE_DEVICES"] = ""
+
+    result = subprocess.run(extract_cmd, cwd=rvc_dir, capture_output=True, text=True, env=env)
+    if result.returncode != 0:
+        print(f"   ❌ Feature extraction failed:")
+        print(result.stderr)
+        return
+    print(f"   ✓ Feature extraction complete")
+
+    # Step 3: Create config.json
+    print("   3/3 Creating training config...")
+    import json
+    config_data = {
+        "train": {
+            "log_interval": 200,
+            "eval_interval": 800,
+            "seed": 1234,
+            "epochs": epochs,
+            "learning_rate": 0.0001,
+            "betas": [0.8, 0.99],
+            "eps": 1e-9,
+            "batch_size": batch_size,
+            "fp16_run": False,
+            "lr_decay": 0.999875,
+            "segment_size": 17280,
+            "init_lr_ratio": 1,
+            "warmup_epochs": 0,
+            "c_mel": 45,
+            "c_kl": 1.0
+        },
+        "data": {
+            "max_wav_value": 32768.0,
+            "sampling_rate": 40000,
+            "filter_length": 2048,
+            "hop_length": 400,
+            "win_length": 2048,
+            "n_mel_channels": 125,
+            "mel_fmin": 0.0,
+            "mel_fmax": None
+        },
+        "model": {
+            "inter_channels": 192,
+            "hidden_channels": 192,
+            "filter_channels": 768,
+            "n_heads": 2,
+            "n_layers": 6,
+            "kernel_size": 3,
+            "p_dropout": 0.0,
+            "resblock": "1",
+            "resblock_kernel_sizes": [3, 7, 11],
+            "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+            "upsample_rates": [10, 10, 2, 2],
+            "upsample_initial_channel": 512,
+            "upsample_kernel_sizes": [16, 16, 4, 4],
+            "spk_embed_dim": 109,
+            "gin_channels": 256,
+            "sr": "40k"
+        },
+        "spk": {experiment_name: 0}
+    }
+
+    config_file = exp_dir / "config.json"
+    with open(config_file, "w") as f:
+        json.dump(config_data, f, indent=2)
+    print(f"   ✓ Config created: {config_file}")
+    print(f"   ✓ RVC preprocessing finished!\n")
 
     # Create MLflow tracker
     if create_rvc_tracker:
@@ -148,6 +275,7 @@ def train_rvc_with_tracking(
         "-pd", str(rvc_dir / "assets/pretrained_v2/f0D40k.pth"),
         "-l", "1",
         "-c", "0",
+        "-v", "v2",  # Model version
     ]
 
     env = os.environ.copy()
