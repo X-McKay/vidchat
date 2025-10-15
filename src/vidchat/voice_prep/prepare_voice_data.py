@@ -84,7 +84,7 @@ def process_audio(
     # Step 1: Normalize and convert to mono 44.1kHz
     print("  - Normalizing audio...")
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg",
                 "-i",
@@ -98,12 +98,15 @@ def process_audio(
                 "-y",  # Overwrite
                 str(temp_normalized),
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=True,
+            text=True,
         )
     except subprocess.CalledProcessError as e:
         print(f"❌ Error normalizing audio: {e}")
+        if e.stderr:
+            print(f"   FFmpeg error: {e.stderr[-500:]}")  # Show last 500 chars
         return []
 
     # Step 2: Remove silence from beginning/end
@@ -287,11 +290,15 @@ def prepare(
     for audio_file in downloaded_files:
         segments = process_audio(audio_file, output_dir, segment_length)
         all_segments.extend(segments)
-        # Clean up downloaded file
-        audio_file.unlink()
+        # Clean up downloaded file (if processing succeeded)
+        audio_file.unlink(missing_ok=True)
 
-    # Clean up download directory
-    download_dir.rmdir()
+    # Clean up download directory (if empty)
+    try:
+        download_dir.rmdir()
+    except OSError:
+        # Directory not empty or doesn't exist - that's okay
+        pass
 
     # Summary
     print()
