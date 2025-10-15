@@ -149,7 +149,7 @@ def train_rvc_with_tracking(
     python_cmd = str(Path.home() / ".local/share/mise/installs/python/3.10.19/bin/python3")
 
     # Step 1: Preprocess audio (resample and slice)
-    print("   1/3 Preprocessing audio...")
+    print("   1/4 Preprocessing audio...")
     preprocess_cmd = [
         python_cmd,
         str(rvc_dir / "infer/modules/train/preprocess.py"),
@@ -169,7 +169,7 @@ def train_rvc_with_tracking(
     print(f"   ✓ Preprocessing complete")
 
     # Step 2: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
-    print("   2/3 Extracting features...")
+    print("   2/4 Extracting features...")
     patched_extract_script = project_root / "src" / "vidchat" / "training" / "extract_features_patched.py"
     extract_cmd = [
         python_cmd,
@@ -192,8 +192,23 @@ def train_rvc_with_tracking(
         return
     print(f"   ✓ Feature extraction complete")
 
-    # Step 3: Create config.json
-    print("   3/3 Creating training config...")
+    # Step 3: Create filelist.txt
+    print("   3/4 Creating filelist...")
+    filelist_path = exp_dir / "filelist.txt"
+    wav_16k_dir = exp_dir / "1_16k_wavs"
+    feature_dir = exp_dir / "3_feature768"
+
+    with open(filelist_path, "w", encoding="utf-8") as f:
+        # List all processed audio files with their features
+        wav_files = sorted(wav_16k_dir.glob("*.wav"))
+        for wav_file in wav_files:
+            # Format: path/to/audio.wav|speaker_id|text (text can be empty)
+            f.write(f"{wav_file}|{experiment_name}|0\n")
+
+    print(f"   ✓ Created filelist with {len(wav_files)} files")
+
+    # Step 4: Create config.json
+    print("   4/4 Creating training config...")
     import json
     config_data = {
         "train": {
