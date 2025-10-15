@@ -209,15 +209,28 @@ def train_rvc_with_tracking(
     # Step 4: Create filelist.txt
     print("   4/5 Creating filelist...")
     filelist_path = exp_dir / "filelist.txt"
-    wav_16k_dir = exp_dir / "1_16k_wavs"
+    gt_wavs_dir = exp_dir / "0_gt_wavs"
+    f0_dir = exp_dir / "2a_f0"
+    f0nsf_dir = exp_dir / "2b-f0nsf"
     feature_dir = exp_dir / "3_feature768"
 
     with open(filelist_path, "w", encoding="utf-8") as f:
-        # List all processed audio files with their features
-        wav_files = sorted(wav_16k_dir.glob("*.wav"))
+        # List all processed audio files with their pitch and feature files
+        # Format: gt_wav|f0|f0nsf|feature|speaker_id
+        wav_files = sorted(gt_wavs_dir.glob("*.wav"))
         for wav_file in wav_files:
-            # Format: path/to/audio.wav|speaker_id|text (text can be empty)
-            f.write(f"{wav_file}|{experiment_name}|0\n")
+            base_name = wav_file.stem  # filename without extension
+            f0_file = f0_dir / f"{base_name}.wav.npy"
+            f0nsf_file = f0nsf_dir / f"{base_name}.wav.npy"
+            feature_file = feature_dir / f"{base_name}.npy"
+
+            # Use relative paths from RVC directory
+            rel_gt = f"logs/{experiment_name}/0_gt_wavs/{wav_file.name}"
+            rel_f0 = f"logs/{experiment_name}/2a_f0/{base_name}.wav.npy"
+            rel_f0nsf = f"logs/{experiment_name}/2b-f0nsf/{base_name}.wav.npy"
+            rel_feature = f"logs/{experiment_name}/3_feature768/{base_name}.npy"
+
+            f.write(f"{rel_gt}|{rel_f0}|{rel_f0nsf}|{rel_feature}|0\n")
 
     print(f"   ✓ Created filelist with {len(wav_files)} files")
 
