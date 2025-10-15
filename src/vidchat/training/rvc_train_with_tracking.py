@@ -296,6 +296,10 @@ def train_rvc_with_tracking(
     env = os.environ.copy()
     if not gpu:
         env["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        # Enable RTX 5090 (sm_120) support via JIT compilation
+        env["TORCH_CUDA_ARCH_LIST"] = "9.0+PTX"  # Use PTX for forward compatibility
+        env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
     print("=" * 60)
     print("🎤 RVC Training with MLflow Tracking")
