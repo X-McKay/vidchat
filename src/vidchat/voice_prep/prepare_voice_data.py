@@ -102,33 +102,45 @@ def process_audio(
             stderr=subprocess.PIPE,
             check=True,
             text=True,
+            timeout=300,  # 5 minute timeout
         )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout normalizing audio (>5 minutes)")
+        return []
     except subprocess.CalledProcessError as e:
         print(f"❌ Error normalizing audio: {e}")
         if e.stderr:
             print(f"   FFmpeg error: {e.stderr[-500:]}")  # Show last 500 chars
         return []
 
-    # Step 2: Remove silence from beginning/end
+    # Step 2: Remove silence from beginning/end only
     temp_trimmed = output_dir / f"temp_trimmed_{input_file.stem}.wav"
-    print("  - Removing silence...")
+    print("  - Removing silence from start/end...")
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 "ffmpeg",
                 "-i",
                 str(temp_normalized),
                 "-af",
-                "silenceremove=1:0:-50dB:1:5:-50dB",  # Remove silence
+                "silenceremove=start_periods=1:start_duration=0.5:start_threshold=-50dB:stop_periods=-1:stop_duration=0.5:stop_threshold=-50dB",  # Remove silence from beginning and end only
                 "-y",
                 str(temp_trimmed),
             ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
         )
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout removing silence (>5 minutes)")
+        temp_normalized.unlink(missing_ok=True)
+        return []
     except subprocess.CalledProcessError as e:
         print(f"❌ Error removing silence: {e}")
+        if e.stderr:
+            print(f"   FFmpeg error: {e.stderr[-500:]}")
         temp_normalized.unlink(missing_ok=True)
         return []
 
@@ -270,13 +282,16 @@ def prepare(
 
     # Download all URLs
     downloaded_files = []
+    existing_files = set()  # Track already-seen files
     for i, url in enumerate(urls, 1):
         print(f"[{i}/{len(urls)}] Downloading from YouTube...")
         if download_audio(url, download_dir):
-            # Find the downloaded file
+            # Find newly downloaded file
             wav_files = list(download_dir.glob("*.wav"))
-            if wav_files:
-                downloaded_files.append(wav_files[-1])  # Get most recent
+            for f in wav_files:
+                if f not in existing_files:
+                    downloaded_files.append(f)
+                    existing_files.add(f)
 
     if not downloaded_files:
         print("\n❌ No audio files were downloaded")
