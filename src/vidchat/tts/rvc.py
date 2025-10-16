@@ -1,8 +1,11 @@
 """
 RVC (Retrieval-based Voice Conversion) integration.
 
-This module will handle voice conversion using RVC models to create
-custom realistic voices.
+FUTURE IMPLEMENTATION: This module is a design sketch for RVC inference integration.
+Training is implemented in vidchat.training.rvc_train_with_tracking.
+
+This will handle voice conversion using trained RVC models to create
+custom realistic voices by converting base TTS output (Piper/XTTS) to trained voice.
 """
 from pathlib import Path
 from .base import BaseTTS

@@ -198,19 +198,30 @@ config = AppConfig(
 
 RVC model training utilities (coming soon).
 
-**Classes:**
+**Modules:**
 
-#### RVCTrainer
-- Prepare audio data for training
-- Train RVC voice conversion models
-- Evaluate model performance
-- Convert voice samples
+#### rvc_train_with_tracking.py
+Complete RVC training pipeline with MLflow integration:
+- GPU-accelerated preprocessing (pitch & feature extraction)
+- Intelligent preprocessing cache (SHA256-based validation)
+- MLflow experiment tracking with system metrics
+- Model checkpointing every 10 epochs
+- Real-time training progress monitoring
 
-**Methods (placeholder):**
-- `prepare_training_data(audio_files)`: Preprocess audio
-- `train_model(model_name, epochs, batch_size)`: Train RVC model
-- `evaluate_model(model_path, test_audio)`: Evaluate performance
-- `convert_voice_sample(model, input, output)`: Convert voice
+**Key Functions:**
+- `train_rvc_with_tracking()`: Main training orchestration
+- `compute_cache_key()`: Generate cache hash from audio files
+- `is_cache_valid()`: Validate preprocessing cache
+- `save_cache_metadata()`: Persist cache information
+- `parse_log_metrics()`: Extract metrics from training logs
+- `tail_and_log_metrics()`: Real-time metric logging to MLflow
+
+#### mlflow_tracker.py
+MLflow experiment tracking wrapper:
+- Automatic experiment and run management
+- System metrics monitoring (CPU, GPU, memory)
+- Model checkpoint logging
+- Training metrics visualization
 
 #### AudioPreprocessor
 - Resample audio to target sample rate
@@ -239,15 +250,17 @@ Helper functions and utilities.
 8. **Animation** → `AvatarRenderer.render_frame()` for each frame
 9. **Display** → OpenCV shows synced video
 
-### RVC Training Flow (Future)
+### RVC Training Flow (Implemented)
 
-1. **Collect Audio** → User provides voice samples
-2. **Preprocessing** → `AudioPreprocessor` cleans audio
-3. **Feature Extraction** → Extract mel-spectrograms, pitch, etc.
-4. **Training** → `RVCTrainer.train_model()` trains voice model
-5. **Evaluation** → Test on validation set
-6. **Export** → Save model for inference
-7. **Usage** → `HybridTTS` uses trained model for voice conversion
+1. **Prepare Voice Data** → `prepare_voice_data.py` downloads from YouTube
+2. **Cache Check** → `is_cache_valid()` checks if preprocessing needed
+3. **Preprocessing (GPU)** → Resample, extract pitch (RMVPE), extract features (HuBERT)
+4. **Filelist Creation** → Generate training index with correct format
+5. **Training** → `train_rvc_with_tracking()` trains Generator & Discriminator
+6. **MLflow Logging** → Track metrics, system stats, and model checkpoints
+7. **Export** → Checkpoints saved every 10 epochs as G_*.pth, D_*.pth
+
+See [docs/RVC_TRAINING.md](RVC_TRAINING.md) for complete guide.
 
 ## Extension Points
 
@@ -389,10 +402,10 @@ config = AppConfig(
 
 ```
 vidchat/training/
-├── rvc_trainer.py (implemented)
-├── audio_preprocessor.py (new)
-├── feature_extractor.py (new)
-└── model_evaluator.py (new)
+├── rvc_train_with_tracking.py (✅ implemented with GPU & MLflow)
+├── mlflow_tracker.py (✅ implemented with system metrics)
+├── extract_features_patched.py (✅ PyTorch 2.6 compatibility)
+└── [Future: Model inference & voice conversion]
 ```
 
 ### Phase 3: Advanced Avatar
