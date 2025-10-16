@@ -36,11 +36,13 @@ uv run python test_webapp.py
 
 ### Core Features (v0.3.0)
 - **🎙️ Zero-Shot Voice Cloning**: XTTS v2 clones any voice with just 6 seconds of audio
+- **🎓 RVC Voice Training**: Train custom voice models with GPU acceleration and MLflow tracking
 - **🤖 AI-Powered Chat**: Ollama LLM (llama3.2) via PydanticAI for intelligent responses
 - **🌐 Web Interface**: FastAPI backend with WebSocket support for real-time audio streaming
 - **🎵 High-Quality Audio**: 24kHz voice synthesis with cloned voice
 - **🌐 17 Languages**: Multilingual support for voice synthesis
 - **⚡ Fast**: ~1-2 seconds per sentence generation
+- **📊 MLflow Tracking**: Experiment tracking with system metrics monitoring
 
 ### Technical Features
 - **📦 Modular Design**: Clean separation of concerns (AI, TTS, Web)
@@ -190,23 +192,31 @@ VidChat uses a YAML configuration file for all settings.
 
 3. **All paths are relative to project root** - works on any OS!
 
-### Voice Training
+### RVC Voice Training
 
-To train a custom voice model:
+Train custom voice models with GPU acceleration and MLflow experiment tracking:
 
-1. Add YouTube URLs to `config.yaml`:
-   ```yaml
-   voice_training:
-     voice_name: "my_voice"
-     training_urls:
-       - "https://www.youtube.com/watch?v=VIDEO1"
-       - "https://www.youtube.com/watch?v=VIDEO2"
-   ```
+```bash
+# 1. Prepare voice data from YouTube
+uv run python src/vidchat/data/prepare_voice_data.py your_voice_name \
+  --urls "https://www.youtube.com/watch?v=VIDEO_ID"
 
-2. Run voice training:
-   ```bash
-   uv run vidchat-cli train-voice
-   ```
+# 2. Train voice model with GPU
+uv run python src/vidchat/training/rvc_train_with_tracking.py your_voice_name \
+  --epochs 500 --batch-size 4 --gpu
+
+# 3. View training metrics
+mlflow ui --backend-store-uri file://$(pwd)/.data/mlruns
+```
+
+**Features:**
+- GPU-accelerated preprocessing (pitch extraction, feature extraction)
+- Intelligent preprocessing cache (skip reprocessing when data unchanged)
+- MLflow experiment tracking with system metrics
+- Model checkpoints saved every 10 epochs
+- Real-time training progress monitoring
+
+See [docs/RVC_TRAINING.md](docs/RVC_TRAINING.md) for comprehensive guide.
 
 ## 📁 Project Structure
 
@@ -291,14 +301,21 @@ chmod +x scripts/setup.sh
 
 Comprehensive guides are available in the `docs/` directory:
 
+**Getting Started:**
 - **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - 5-minute setup guide
 - **[docs/CLI_GUIDE.md](docs/CLI_GUIDE.md)** - Complete CLI documentation
 - **[docs/CLI_COMMANDS.md](docs/CLI_COMMANDS.md)** - Quick command reference
+
+**Voice & Training:**
+- **[docs/RVC_TRAINING.md](docs/RVC_TRAINING.md)** - Complete RVC training guide
+- **[docs/XTTS_VOICE_CLONING.md](docs/XTTS_VOICE_CLONING.md)** - Zero-shot voice cloning with XTTS v2
+- **[docs/VOICE_DATA_PREP_GUIDE.md](docs/VOICE_DATA_PREP_GUIDE.md)** - Voice data preparation
+- **[docs/VOICE_CLONING_SOLUTIONS.md](docs/VOICE_CLONING_SOLUTIONS.md)** - Comparison of voice cloning options
+- **[docs/MLFLOW_TRACKING.md](docs/MLFLOW_TRACKING.md)** - Experiment tracking guide
+
+**Interface & Features:**
 - **[docs/WEB_INTERFACE_README.md](docs/WEB_INTERFACE_README.md)** - Web interface guide
 - **[docs/AVATAR_GUIDE.md](docs/AVATAR_GUIDE.md)** - Avatar customization
-- **[docs/XTTS_VOICE_CLONING.md](docs/XTTS_VOICE_CLONING.md)** - Voice cloning with XTTS v2
-- **[docs/VOICE_CLONING_SOLUTIONS.md](docs/VOICE_CLONING_SOLUTIONS.md)** - Comparison of voice cloning options
-- **[docs/VOICE_DATA_PREP_GUIDE.md](docs/VOICE_DATA_PREP_GUIDE.md)** - Voice data preparation
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
 
 ## 🔒 Privacy & Security

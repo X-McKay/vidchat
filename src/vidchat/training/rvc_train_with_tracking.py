@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Optional
 import time
+import hashlib
+import json
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[3]
@@ -22,6 +24,102 @@ try:
 except ImportError:
     print("Warning: Could not import tracking modules. MLflow tracking disabled.")
     create_rvc_tracker = None
+
+
+def compute_cache_key(wav_files: list, preprocessing_params: dict) -> str:
+    """Compute a cache key based on input files and preprocessing parameters.
+
+    Args:
+        wav_files: List of Path objects for input audio files
+        preprocessing_params: Dictionary of preprocessing parameters
+
+    Returns:
+        SHA256 hash string representing the cache key
+    """
+    hasher = hashlib.sha256()
+
+    # Hash all audio file contents (sorted by name for consistency)
+    for wav_file in sorted(wav_files, key=lambda x: x.name):
+        hasher.update(wav_file.name.encode())
+        hasher.update(str(wav_file.stat().st_size).encode())
+        hasher.update(str(wav_file.stat().st_mtime).encode())
+
+    # Hash preprocessing parameters
+    params_str = json.dumps(preprocessing_params, sort_keys=True)
+    hasher.update(params_str.encode())
+
+    return hasher.hexdigest()
+
+
+def is_cache_valid(exp_dir: Path, cache_key: str) -> bool:
+    """Check if cached preprocessing data is valid.
+
+    Args:
+        exp_dir: RVC experiment directory
+        cache_key: Expected cache key
+
+    Returns:
+        True if cache is valid and can be used
+    """
+    cache_file = exp_dir / "cache_metadata.json"
+
+    if not cache_file.exists():
+        return False
+
+    try:
+        with open(cache_file, 'r') as f:
+            cache_metadata = json.load(f)
+
+        # Check if cache key matches
+        if cache_metadata.get("cache_key") != cache_key:
+            return False
+
+        # Check if all required directories exist and have files
+        required_dirs = {
+            "0_gt_wavs": "*.wav",
+            "1_16k_wavs": "*.wav",
+            "2a_f0": "*.npy",
+            "2b-f0nsf": "*.npy",
+            "3_feature768": "*.npy",
+        }
+
+        for dir_name, pattern in required_dirs.items():
+            dir_path = exp_dir / dir_name
+            if not dir_path.exists():
+                return False
+            if not list(dir_path.glob(pattern)):
+                return False
+
+        # Check if filelist exists
+        filelist = exp_dir / "filelist.txt"
+        if not filelist.exists():
+            return False
+
+        return True
+
+    except Exception as e:
+        print(f"   ⚠️  Cache validation error: {e}")
+        return False
+
+
+def save_cache_metadata(exp_dir: Path, cache_key: str, preprocessing_params: dict):
+    """Save cache metadata to disk.
+
+    Args:
+        exp_dir: RVC experiment directory
+        cache_key: Cache key computed from inputs
+        preprocessing_params: Preprocessing parameters used
+    """
+    cache_file = exp_dir / "cache_metadata.json"
+
+    metadata = {
+        "cache_key": cache_key,
+        "timestamp": time.time(),
+        "preprocessing_params": preprocessing_params,
+    }
+
+    with open(cache_file, 'w') as f:
+        json.dump(metadata, f, indent=2)
 
 
 def parse_log_metrics(log_line: str) -> Optional[dict]:
@@ -141,156 +239,190 @@ def train_rvc_with_tracking(
 
     print(f"   ✓ Copied to: {gt_wavs_dir}")
 
-    # Run RVC preprocessing pipeline
-    print(f"\n🔧 Running RVC preprocessing...")
-    python_cmd = str(Path.home() / ".local/share/mise/installs/python/3.10.19/bin/python3")
-
-    # Step 1: Preprocess audio (resample and slice)
-    print("   1/5 Preprocessing audio...")
-    preprocess_cmd = [
-        python_cmd,
-        str(rvc_dir / "infer/modules/train/preprocess.py"),
-        str(gt_wavs_dir),
-        "40000",  # Sample rate
-        str(os.cpu_count() or 4),  # Number of CPU cores
-        str(exp_dir),
-        "False",  # noparallel
-        "3.7",  # Segment length
-    ]
-
-    result = subprocess.run(preprocess_cmd, cwd=rvc_dir, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"   ❌ Preprocessing failed:")
-        print(result.stderr)
-        return
-    print(f"   ✓ Preprocessing complete")
-
-    # Step 2: Extract pitch (f0)
-    print("   2/5 Extracting pitch (f0)...")
-    f0_extract_cmd = [
-        python_cmd,
-        str(rvc_dir / "infer/modules/train/extract/extract_f0_print.py"),
-        str(exp_dir),
-        str(os.cpu_count() or 4),  # Number of processes
-        "rmvpe",  # F0 extraction method (rmvpe is most accurate)
-    ]
-
-    result = subprocess.run(f0_extract_cmd, cwd=rvc_dir, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"   ❌ Pitch extraction failed:")
-        print(result.stderr)
-        return
-    print(f"   ✓ Pitch extraction complete")
-
-    # Step 3: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
-    print("   3/5 Extracting features...")
-    patched_extract_script = project_root / "src" / "vidchat" / "training" / "extract_features_patched.py"
-    extract_cmd = [
-        python_cmd,
-        str(patched_extract_script),
-        "cpu",  # Device
-        "1",  # Number of processes
-        "0",  # GPU ID (ignored for CPU)
-        str(exp_dir),
-        "v2",  # Model version
-        "False",  # Use diff
-    ]
-
-    env = os.environ.copy()
-    env["CUDA_VISIBLE_DEVICES"] = ""
-
-    result = subprocess.run(extract_cmd, cwd=rvc_dir, capture_output=True, text=True, env=env)
-    if result.returncode != 0:
-        print(f"   ❌ Feature extraction failed:")
-        print(result.stderr)
-        return
-    print(f"   ✓ Feature extraction complete")
-
-    # Step 4: Create filelist.txt
-    print("   4/5 Creating filelist...")
-    filelist_path = exp_dir / "filelist.txt"
-    gt_wavs_dir = exp_dir / "0_gt_wavs"
-    f0_dir = exp_dir / "2a_f0"
-    f0nsf_dir = exp_dir / "2b-f0nsf"
-    feature_dir = exp_dir / "3_feature768"
-
-    with open(filelist_path, "w", encoding="utf-8") as f:
-        # List all processed audio files with their pitch and feature files
-        # Format: gt_wav|f0|f0nsf|feature|speaker_id
-        wav_files = sorted(gt_wavs_dir.glob("*.wav"))
-        for wav_file in wav_files:
-            base_name = wav_file.stem  # filename without extension
-            f0_file = f0_dir / f"{base_name}.wav.npy"
-            f0nsf_file = f0nsf_dir / f"{base_name}.wav.npy"
-            feature_file = feature_dir / f"{base_name}.npy"
-
-            # Use relative paths from RVC directory
-            rel_gt = f"logs/{experiment_name}/0_gt_wavs/{wav_file.name}"
-            rel_f0 = f"logs/{experiment_name}/2a_f0/{base_name}.wav.npy"
-            rel_f0nsf = f"logs/{experiment_name}/2b-f0nsf/{base_name}.wav.npy"
-            rel_feature = f"logs/{experiment_name}/3_feature768/{base_name}.npy"
-
-            f.write(f"{rel_gt}|{rel_f0}|{rel_f0nsf}|{rel_feature}|0\n")
-
-    print(f"   ✓ Created filelist with {len(wav_files)} files")
-
-    # Step 5: Create config.json
-    print("   5/5 Creating training config...")
-    import json
-    config_data = {
-        "train": {
-            "log_interval": 200,
-            "eval_interval": 800,
-            "seed": 1234,
-            "epochs": epochs,
-            "learning_rate": 0.0001,
-            "betas": [0.8, 0.99],
-            "eps": 1e-9,
-            "batch_size": batch_size,
-            "fp16_run": False,
-            "lr_decay": 0.999875,
-            "segment_size": 17280,
-            "init_lr_ratio": 1,
-            "warmup_epochs": 0,
-            "c_mel": 45,
-            "c_kl": 1.0
-        },
-        "data": {
-            "max_wav_value": 32768.0,
-            "sampling_rate": 40000,
-            "filter_length": 2048,
-            "hop_length": 400,
-            "win_length": 2048,
-            "n_mel_channels": 125,
-            "mel_fmin": 0.0,
-            "mel_fmax": None
-        },
-        "model": {
-            "inter_channels": 192,
-            "hidden_channels": 192,
-            "filter_channels": 768,
-            "n_heads": 2,
-            "n_layers": 6,
-            "kernel_size": 3,
-            "p_dropout": 0.0,
-            "resblock": "1",
-            "resblock_kernel_sizes": [3, 7, 11],
-            "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
-            "upsample_rates": [10, 10, 2, 2],
-            "upsample_initial_channel": 512,
-            "upsample_kernel_sizes": [16, 16, 4, 4],
-            "spk_embed_dim": 109,
-            "gin_channels": 256,
-            "sr": "40k"
-        },
-        "spk": {experiment_name: 0}
+    # Define preprocessing parameters for cache key
+    preprocessing_params = {
+        "sample_rate": 40000,
+        "segment_length": 3.7,
+        "f0_method": "rmvpe",
+        "model_version": "v2",
+        "gpu": gpu,
     }
 
-    config_file = exp_dir / "config.json"
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
-    print(f"   ✓ Config created: {config_file}")
-    print(f"   ✓ RVC preprocessing finished!\n")
+    # Compute cache key
+    cache_key = compute_cache_key(wav_files, preprocessing_params)
+
+    # Check if preprocessing cache is valid
+    if is_cache_valid(exp_dir, cache_key):
+        print(f"\n💾 Using cached preprocessing data")
+        print(f"   Cache key: {cache_key[:16]}...")
+        print(f"   ✓ Skipping preprocessing (data unchanged)")
+    else:
+        # Run RVC preprocessing pipeline
+        print(f"\n🔧 Running RVC preprocessing...")
+        if exp_dir.exists() and (exp_dir / "cache_metadata.json").exists():
+            print(f"   Cache invalidated (data or parameters changed)")
+
+        python_cmd = str(Path.home() / ".local/share/mise/installs/python/3.10.19/bin/python3")
+
+        # Step 1: Preprocess audio (resample and slice)
+        print("   1/5 Preprocessing audio...")
+        preprocess_cmd = [
+            python_cmd,
+            str(rvc_dir / "infer/modules/train/preprocess.py"),
+            str(gt_wavs_dir),
+            "40000",  # Sample rate
+            str(os.cpu_count() or 4),  # Number of CPU cores
+            str(exp_dir),
+            "False",  # noparallel
+            "3.7",  # Segment length
+        ]
+
+        result = subprocess.run(preprocess_cmd, cwd=rvc_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"   ❌ Preprocessing failed:")
+            print(result.stderr)
+            return
+        print(f"   ✓ Preprocessing complete")
+
+        # Step 2: Extract pitch (f0)
+        print("   2/5 Extracting pitch (f0)...")
+        f0_extract_cmd = [
+            python_cmd,
+            str(rvc_dir / "infer/modules/train/extract/extract_f0_print.py"),
+            str(exp_dir),
+            str(os.cpu_count() or 4),  # Number of processes
+            "rmvpe",  # F0 extraction method (rmvpe is most accurate)
+        ]
+
+        result = subprocess.run(f0_extract_cmd, cwd=rvc_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"   ❌ Pitch extraction failed:")
+            print(result.stderr)
+            return
+        print(f"   ✓ Pitch extraction complete")
+
+        # Step 3: Extract features (using patched wrapper for PyTorch 2.6 compatibility)
+        print("   3/5 Extracting features...")
+        patched_extract_script = project_root / "src" / "vidchat" / "training" / "extract_features_patched.py"
+
+        # Use GPU for feature extraction if available
+        device = "cuda" if gpu else "cpu"
+        gpu_id = "0" if gpu else "0"
+        n_processes = "1"  # Use 1 GPU process for feature extraction
+
+        extract_cmd = [
+            python_cmd,
+            str(patched_extract_script),
+            device,  # Device (cuda or cpu)
+            n_processes,  # Number of processes
+            gpu_id,  # GPU ID
+            str(exp_dir),
+            "v2",  # Model version
+            "False",  # Use diff
+        ]
+
+        env = os.environ.copy()
+        # Don't disable CUDA for GPU feature extraction
+        if not gpu:
+            env["CUDA_VISIBLE_DEVICES"] = ""
+
+        result = subprocess.run(extract_cmd, cwd=rvc_dir, capture_output=True, text=True, env=env)
+        if result.returncode != 0:
+            print(f"   ❌ Feature extraction failed:")
+            print(result.stderr)
+            return
+        print(f"   ✓ Feature extraction complete")
+
+        # Step 4: Create filelist.txt
+        print("   4/5 Creating filelist...")
+        filelist_path = exp_dir / "filelist.txt"
+        gt_wavs_dir = exp_dir / "0_gt_wavs"
+        f0_dir = exp_dir / "2a_f0"
+        f0nsf_dir = exp_dir / "2b-f0nsf"
+        feature_dir = exp_dir / "3_feature768"
+
+        with open(filelist_path, "w", encoding="utf-8") as f:
+            # List all processed audio files with their pitch and feature files
+            # Format: gt_wav|feature|f0|f0nsf|speaker_id
+            # Note: RVC expects features before pitch data!
+            processed_wav_files = sorted(gt_wavs_dir.glob("*.wav"))
+            for wav_file in processed_wav_files:
+                base_name = wav_file.stem  # filename without extension
+                f0_file = f0_dir / f"{base_name}.wav.npy"
+                f0nsf_file = f0nsf_dir / f"{base_name}.wav.npy"
+                feature_file = feature_dir / f"{base_name}.npy"
+
+                # Use relative paths from RVC directory
+                rel_gt = f"logs/{experiment_name}/0_gt_wavs/{wav_file.name}"
+                rel_f0 = f"logs/{experiment_name}/2a_f0/{base_name}.wav.npy"
+                rel_f0nsf = f"logs/{experiment_name}/2b-f0nsf/{base_name}.wav.npy"
+                rel_feature = f"logs/{experiment_name}/3_feature768/{base_name}.npy"
+
+                f.write(f"{rel_gt}|{rel_feature}|{rel_f0}|{rel_f0nsf}|0\n")
+
+        print(f"   ✓ Created filelist with {len(processed_wav_files)} files")
+
+        # Step 5: Create config.json
+        print("   5/5 Creating training config...")
+        config_data = {
+            "train": {
+                "log_interval": 200,
+                "eval_interval": 800,
+                "seed": 1234,
+                "epochs": epochs,
+                "learning_rate": 0.0001,
+                "betas": [0.8, 0.99],
+                "eps": 1e-9,
+                "batch_size": batch_size,
+                "fp16_run": False,
+                "lr_decay": 0.999875,
+                "segment_size": 17280,
+                "init_lr_ratio": 1,
+                "warmup_epochs": 0,
+                "c_mel": 45,
+                "c_kl": 1.0
+            },
+            "data": {
+                "max_wav_value": 32768.0,
+                "sampling_rate": 40000,
+                "filter_length": 2048,
+                "hop_length": 400,
+                "win_length": 2048,
+                "n_mel_channels": 125,
+                "mel_fmin": 0.0,
+                "mel_fmax": None
+            },
+            "model": {
+                "inter_channels": 192,
+                "hidden_channels": 192,
+                "filter_channels": 768,
+                "n_heads": 2,
+                "n_layers": 6,
+                "kernel_size": 3,
+                "p_dropout": 0.0,
+                "resblock": "1",
+                "resblock_kernel_sizes": [3, 7, 11],
+                "resblock_dilation_sizes": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "upsample_rates": [10, 10, 2, 2],
+                "upsample_initial_channel": 512,
+                "upsample_kernel_sizes": [16, 16, 4, 4],
+                "spk_embed_dim": 109,
+                "gin_channels": 256,
+                "sr": "40k",
+                "use_spectral_norm": False
+            },
+            "spk": {experiment_name: 0}
+        }
+
+        config_file = exp_dir / "config.json"
+        with open(config_file, "w") as f:
+            json.dump(config_data, f, indent=2)
+        print(f"   ✓ Config created: {config_file}")
+        print(f"   ✓ RVC preprocessing finished!")
+
+        # Save cache metadata
+        save_cache_metadata(exp_dir, cache_key, preprocessing_params)
+        print(f"   💾 Saved preprocessing cache\n")
 
     # Create MLflow tracker
     if create_rvc_tracker:
