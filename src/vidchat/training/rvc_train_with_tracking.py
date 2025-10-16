@@ -402,17 +402,20 @@ def train_rvc_with_tracking(
             # Log final artifacts
             print("\n📦 Logging artifacts...")
             if exp_dir.exists():
-                # Log checkpoints
-                checkpoints = list(exp_dir.glob("G_*.pth"))
-                if checkpoints:
-                    tracker.log_artifact(str(checkpoints[-1]))
-                    print(f"   Logged checkpoint: {checkpoints[-1].name}")
+                # Log all model checkpoints (Generator and Discriminator)
+                tracker.log_model_checkpoints(exp_dir, pattern="G_*.pth")  # Generator checkpoints
+                tracker.log_model_checkpoints(exp_dir, pattern="D_*.pth")  # Discriminator checkpoints
 
                 # Log config
                 config_file = exp_dir / "config.json"
                 if config_file.exists():
                     tracker.log_artifact(str(config_file))
-                    print(f"   Logged config: {config_file.name}")
+                    print(f"   ✓ Logged config: {config_file.name}")
+
+                # Log training log
+                if log_file.exists():
+                    tracker.log_artifact(str(log_file))
+                    print(f"   ✓ Logged training log: {log_file.name}")
 
             print(f"\n✓ Training complete!")
             print(f"📊 View results: mlflow ui")
